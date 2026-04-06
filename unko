@@ -1,0 +1,249 @@
+loadstring([[
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+
+local enabled, spinEnabled, holding = false, false, false
+local grabbed = nil
+local hoveringObjects = {}
+local distance, spinSpeed, flingPower, hoverHeight = 8, 0.4, 400, 10
+local spinAngle = 0
+
+local gui = Instance.new("ScreenGui")
+gui.Parent = player:WaitForChild("PlayerGui")
+gui.DisplayOrder = 9999
+gui.ResetOnSpawn = false
+
+local main = Instance.new("Frame", gui)
+main.Size = UDim2.new(0,150,0,200)
+main.Position = UDim2.new(1,-160,1,-210)
+main.BackgroundColor3 = Color3.fromRGB(20,20,20)
+
+local dragBtn = Instance.new("TextButton", main)
+dragBtn.Size = UDim2.new(1,0,0,20)
+dragBtn.Position = UDim2.new(0,0,0,0)
+dragBtn.Text = "cat hub"
+dragBtn.BackgroundColor3 = Color3.fromRGB(60,60,60)
+dragBtn.TextColor3 = Color3.fromRGB(255,255,255)
+dragBtn.TextScaled = true
+
+local sizeBtn = Instance.new("TextButton", main)
+sizeBtn.Size = UDim2.new(0,20,0,20)
+sizeBtn.Position = UDim2.new(1,-45,0,0)
+sizeBtn.Text = "🔽"
+sizeBtn.BackgroundColor3 = Color3.fromRGB(80,80,80)
+sizeBtn.TextColor3 = Color3.fromRGB(255,255,255)
+sizeBtn.TextScaled = true
+
+local closeBtn = Instance.new("TextButton", main)
+closeBtn.Size = UDim2.new(0,20,0,20)
+closeBtn.Position = UDim2.new(1,-20,0,0)
+closeBtn.Text = "❌"
+closeBtn.BackgroundColor3 = Color3.fromRGB(120,40,40)
+closeBtn.TextColor3 = Color3.fromRGB(255,255,255)
+closeBtn.TextScaled = true
+
+local scrollFrame = Instance.new("ScrollingFrame", main)
+scrollFrame.Size = UDim2.new(1,0,1,-20)
+scrollFrame.Position = UDim2.new(0,0,0,20)
+scrollFrame.CanvasSize = UDim2.new(0,0,0,300)
+scrollFrame.ScrollBarThickness = 5
+scrollFrame.BackgroundTransparency = 1
+
+local function makeBtn(text, y)
+    local b = Instance.new("TextButton", scrollFrame)
+    b.Size = UDim2.new(1,-10,0,15)
+    b.Position = UDim2.new(0,5,0,y)
+    b.Text = text
+    b.BackgroundColor3 = Color3.fromRGB(80,80,80)
+    b.TextColor3 = Color3.fromRGB(255,255,255)
+    b.TextScaled = true
+    return b
+end
+
+local toggleBtn = makeBtn("掴むOFF",0)
+local spinBtn = makeBtn("Spin OFF",20)
+local hoverBtn = makeBtn("空中浮かす",40)
+local throwBtn = makeBtn("投げる",60)
+
+local function makeLabeledBox(name, default, y)
+    local label = Instance.new("TextLabel", scrollFrame)
+    label.Size = UDim2.new(1,-10,0,10)
+    label.Position = UDim2.new(0,5,0,y)
+    label.Text = name
+    label.BackgroundColor3 = Color3.fromRGB(50,50,50)
+    label.TextColor3 = Color3.fromRGB(255,255,255)
+    label.TextScaled = true
+
+    local box = Instance.new("TextBox", scrollFrame)
+    box.Size = UDim2.new(1,-10,0,15)
+    box.Position = UDim2.new(0,5,0,y+10)
+    box.Text = tostring(default)
+    box.BackgroundColor3 = Color3.fromRGB(80,80,80)
+    box.TextColor3 = Color3.fromRGB(255,255,255)
+    box.ClearTextOnFocus = false
+    box.TextScaled = true
+    return box
+end
+
+local distBox = makeLabeledBox("掴む距離", distance, 80)
+local spinBox = makeLabeledBox("回転速度", spinSpeed, 110)
+local powerBox = makeLabeledBox("投げる力", flingPower, 140)
+local hoverBox = makeLabeledBox("ホバリング高さ", hoverHeight, 170)
+
+local dragging = false
+local dragStart = Vector2.new()
+local startPos = UDim2.new()
+
+local function startDrag(input)
+    dragging = true
+    dragStart = input.Position
+    startPos = main.Position
+end
+local function updateDrag(input)
+    if dragging then
+        local delta = input.Position - dragStart
+        main.Position = UDim2.new(
+            startPos.X.Scale, startPos.X.Offset + delta.X,
+            startPos.Y.Scale, startPos.Y.Offset + delta.Y
+        )
+    end
+end
+local function endDrag() dragging=false end
+
+dragBtn.InputBegan:Connect(function(input)
+    if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then
+        startDrag(input)
+    end
+end)
+dragBtn.InputChanged:Connect(function(input)
+    if input.UserInputType==Enum.UserInputType.MouseMovement or input.UserInputType==Enum.UserInputType.Touch then
+        updateDrag(input)
+    end
+end)
+UIS.InputChanged:Connect(function(input)
+    if input.UserInputType==Enum.UserInputType.MouseMovement or input.UserInputType==Enum.UserInputType.Touch then
+        updateDrag(input)
+    end
+end)
+dragBtn.InputEnded:Connect(function(input)
+    if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then
+        endDrag()
+    end
+end)
+
+local small = false
+sizeBtn.MouseButton1Click:Connect(function()
+    small = not small
+    if small then
+        main.Size = UDim2.new(0,100,0,140)
+        sizeBtn.Text = "🔼"
+    else
+        main.Size = UDim2.new(0,150,0,200)
+        sizeBtn.Text = "🔽"
+    end
+end)
+
+local connection
+closeBtn.MouseButton1Click:Connect(function()
+    if connection then connection:Disconnect() end
+    hoveringObjects = {}
+    grabbed = nil
+    holding = false
+    gui:Destroy()
+end)
+
+toggleBtn.MouseButton1Click:Connect(function()
+    enabled = not enabled
+    toggleBtn.Text = enabled and "掴むON" or "掴むOFF"
+end)
+spinBtn.MouseButton1Click:Connect(function()
+    spinEnabled = not spinEnabled
+    spinBtn.Text = spinEnabled and "Spin ON" or "Spin OFF"
+end)
+hoverBtn.MouseButton1Click:Connect(function()
+    if grabbed then
+        hoveringObjects[grabbed]=true
+        grabbed.Anchored=false
+        holding=false
+    end
+end)
+throwBtn.MouseButton1Click:Connect(function()
+    if grabbed then
+        hoveringObjects[grabbed]=nil
+        grabbed.AssemblyLinearVelocity=camera.CFrame.LookVector*flingPower
+        grabbed=nil
+        holding=false
+    end
+    for obj,_ in pairs(hoveringObjects) do
+        if obj and obj.Parent then
+            hoveringObjects[obj]=nil
+            obj.AssemblyLinearVelocity=camera.CFrame.LookVector*flingPower
+        end
+    end
+end)
+
+distBox.FocusLost:Connect(function()
+    local n = tonumber(distBox.Text)
+    if n then distance=n end
+    distBox.Text = tostring(distance)
+end)
+spinBox.FocusLost:Connect(function()
+    local n = tonumber(spinBox.Text)
+    if n then spinSpeed=n end
+    spinBox.Text = tostring(spinSpeed)
+end)
+powerBox.FocusLost:Connect(function()
+    local n = tonumber(powerBox.Text)
+    if n then flingPower=n end
+    powerBox.Text = tostring(flingPower)
+end)
+hoverBox.FocusLost:Connect(function()
+    local n = tonumber(hoverBox.Text)
+    if n then hoverHeight=n end
+    hoverBox.Text = tostring(hoverHeight)
+end)
+
+local function canGrab(part)
+    return part and not part.Anchored and not part:IsDescendantOf(player.Character)
+end
+local function getTarget()
+    local origin=camera.CFrame.Position
+    local direction=camera.CFrame.LookVector*20
+    local rp=RaycastParams.new()
+    rp.FilterDescendantsInstances={player.Character}
+    rp.FilterType=Enum.RaycastFilterType.Blacklist
+    local result=workspace:Raycast(origin,direction,rp)
+    return result and result.Instance
+end
+
+connection = RunService.RenderStepped:Connect(function()
+    if enabled then
+        local target=getTarget()
+        if target and canGrab(target) then
+            grabbed=target
+            holding=true
+            spinAngle=0
+        end
+        if holding and grabbed and grabbed.Parent then
+            local hrp=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                local pos=hrp.CFrame*CFrame.new(0,0,-distance)
+                if spinEnabled then spinAngle+=spinSpeed; pos=pos*CFrame.Angles(0,spinAngle,0) end
+                grabbed.CFrame=grabbed.CFrame:Lerp(pos,0.4)
+            end
+        end
+    end
+    for obj,_ in pairs(hoveringObjects) do
+        if obj and obj.Parent then
+            local targetY = player.Character.HumanoidRootPart.Position.Y + hoverHeight
+            local targetPos = Vector3.new(obj.Position.X,targetY,obj.Position.Z)
+            obj.CFrame=CFrame.new(targetPos)
+        else
+            hoveringObjects[obj]=nil
+        end
+    end
+end)
+]])()
